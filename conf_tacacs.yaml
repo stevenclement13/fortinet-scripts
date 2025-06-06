@@ -1,0 +1,69 @@
+---
+- name: Fortiswitch tacacs migration
+  hosts: fortiswitches
+  gather_facts: no
+  vars_files: 
+    - secrets.yaml
+  vars:
+    ansible_connection: ssh
+    ansible_command_timeout: 60
+    ansible_user: "{{ support_acct }}"
+    ansible_password: "{{ support_pwd }}"
+    tacacs_server_name1: "SVR1"
+    tacacs_server_name2: "SVR2"
+    tacacs_server_ip1: "1.1.1.1"
+    tacacs_server_ip2: "2.2.2.2"
+    tacacs_server_port: "4901"
+    authen_type: "pap"
+
+  tasks:
+    - name: Config Tacacs
+      ansible.builtin.raw: |
+        config user tacacs+
+        edit "{{ tacacs_server_name1 }}"
+        set authen-type pap
+        set key "{{ server_key }}"
+        set port "{{ tacacs_server_port }}"
+        set server "{{ tacacs_server_ip1"
+        set source-ip "{{ ansible_host }}"
+        next
+        edit "{{ tacacs_server_name2 }}"
+        set authen-type pap
+        set key "{{ server_key }}"
+        set port "{{ tacacs_server_port }}"
+        set server "{{ tacacs_server_ip2 }}"
+        set source-ip "{{ ansible_host }}"
+        end
+        config user group
+        edit "tac-grp"
+        set member "{{ tacacs_server_name1 }}" "{{ tacacs_server_name2 }}"
+        end
+        config system accprofile
+        edit "readonly"
+        set loggrp read
+        set netgrp read
+        set sysgrp read
+        next
+        end
+        config system admin
+        edit "my_admin_account"
+        set accprofile "super_admin"
+        set password "{{ my_admin_password }}"
+        next  
+        edit "tac-user"
+        set remote-auth enable
+        set accprofile "super_admin"
+        set wildcard enable
+        set remote-group "tac-grp"
+        set accprofile-override enable
+        next
+        end
+      register: command_output
+
+    - name: Test tacacs
+      ansible.builtin.raw: "diagnose test authserver tacacs+ {{ tacacs_server_name1 }} {{ my_user }} {{ my_password }}"
+      register: test_output
+
+    - name: Display test output
+      ansible.builtin.debug:
+        var: test_output.stdout_lines
