@@ -1,0 +1,61 @@
+---
+- name: Fortiswitch show info
+  hosts: mscan_mf_group6
+  gather_facts: yes
+  vars_files:
+    - secrets.yaml
+  vars:
+    ansible_connection: ssh
+    ansible_command_timeout: 60
+    ansible_user: "{{ lmn_user }}"
+    ansible_password: "{{ lmn_password }}"
+
+  tasks:
+    - name: show system arp
+      raw: "get system arp"
+      register: arp_output
+
+    - name: show mac addresses
+      raw: "diag switch mac-address list"
+      register: mac_output
+
+    - name: get route table
+      raw: "get router info routing-table all"
+      register: route_output
+
+    - name: Parse ARP entries
+      set_fact:
+        parsed_arp_entries: "{{ parsed_arp_entries | default([]) + [{'ip': item | regex_search(ip_regex), 'mac': item | regex_search(mac_regex), 'interface': item | regex_search(interface_regex)}] }}"
+      vars:
+        ip_regex: '(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'
+        mac_regex: '([0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})'
+        interface_regex: '(\S+)$'
+      loop: "{{ arp_output.stdout_lines }}"
+      when: item | regex_search(ip_regex) and item | regex_search(mac_regex)
+
+    - name: Parse MAC entries
+      set_fact:
+        parsed_mac_entries: "{{ parsed_mac_entries | default([]) + [{'mac': item | regex_search(mac_regex), 'vlan': item | regex_search(vlan_regex), 'port': item | regex_search(port_regex)}] }}"
+      vars:
+        mac_regex: 'MAC: ([0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})'
+        vlan_regex: 'VLAN: (\d+)'
+        port_regex: 'Port: ([^(]+)'
+      loop: "{{ mac_output.stdout_lines }}"
+      when: item | regex_search(mac_regex) and item | regex_search(vlan_regex) and item | regex_search(port_regex)
+
+    - name: Parse Route entries
+      set_fact:
+        parsed_route_entries: "{{ parsed_route_entries | default([]) + [{'route_type': item | regex_search(route_type_regex), 'network': item | regex_search(network_regex), 'next_hop': item | regex_search(next_hop_regex), 'interface': item | regex_search(route_interface_regex)}] }}"
+      vars:
+        route_type_regex: '^([SCORBKIE12]+)'
+        network_regex: '(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2})'
+        next_hop_regex: 'via ([0-9.]+)'
+        route_interface_regex: ', ([^,\[\]]+)(?:,|\[|$)'
+      loop: "{{ route_output.stdout_lines }}"
+      when: item | regex_search(network_regex) and (item | regex_search(next_hop_regex) or 'directly connected' in item)
+
+    - name: Generate CSV output
+      template:
+        src: csv_output.j2
+        dest: "./network_output_{{ inventory_hostname }}_{{ ansible_date_time.epoch }}.csv"
+      delegate_to: localhost
