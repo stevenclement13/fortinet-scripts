@@ -1,0 +1,16 @@
+Host,Command,IP_Address,MAC_Address,Interface,VLAN,Port,Route_Type,Network,Next_Hop,Raw_Output
+{% for entry in parsed_arp_entries %}
+{% if entry.ip and entry.mac and entry.interface %}
+{{ inventory_hostname }},"get system arp","{{ entry.ip }}","{{ entry.mac }}","{{ entry.interface }}","","","","","",""
+{% endif %}
+{% endfor %}
+{% for entry in parsed_mac_entries %}
+{% if entry.mac and entry.vlan and entry.port %}
+{{ inventory_hostname }},"diag switch mac-address list","","{{ entry.mac }}","","{{ entry.vlan }}","{{ entry.port }}","","","",""
+{% endif %}
+{% endfor %}
+{% for entry in parsed_route_entries %}
+{% if entry.network %}
+{{ inventory_hostname }},"get router info routing-table all","","","{{ entry.interface | default('') }}","","","{{ entry.route_type | default('') }}","{{ entry.network }}","{{ entry.next_hop | default('') }}",""
+{% endif %}
+{% endfor %}
