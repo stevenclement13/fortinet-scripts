@@ -1,0 +1,38 @@
+Hostname,Network,Next_Hop,Metric,Interface,Protocol
+{% for line in route_output.stdout[0].split('\n') -%}
+{% if line.strip() and (line.startswith('C') or line.startswith('S') or line.startswith('R') or line.startswith('O') or line.startswith('D') or line.startswith('B') or line.startswith('i')) -%}
+{% set parts = line.split() -%}
+{% if parts|length >= 3 -%}
+{% set protocol = parts[0] -%}
+{% set network = parts[1] -%}
+{% if 'via' in line -%}
+{% set via_index = parts.index('via') -%}
+{% if via_index + 1 < parts|length -%}
+{% set next_hop = parts[via_index + 1] -%}
+{% else -%}
+{% set next_hop = 'directly connected' -%}
+{% endif -%}
+{% else -%}
+{% set next_hop = 'directly connected' -%}
+{% endif -%}
+{% set metric = '' -%}
+{% set interface = '' -%}
+{% if '[' in line and ']' in line -%}
+{% for part in parts -%}
+{% if part.startswith('[') and part.endswith(']') -%}
+{% set metric_admin = part[1:-1].split('/') -%}
+{% if metric_admin|length >= 2 -%}
+{% set metric = metric_admin[1] -%}
+{% endif -%}
+{% endif -%}
+{% endfor -%}
+{% endif -%}
+{% for part in parts -%}
+{% if part.startswith('FastEthernet') or part.startswith('GigabitEthernet') or part.startswith('Ethernet') or part.startswith('Serial') or part.startswith('Loopback') or part.startswith('Vlan') -%}
+{% set interface = part.rstrip(',') -%}
+{% endif -%}
+{% endfor -%}
+{{ inventory_hostname }},{{ network }},{{ next_hop }},{{ metric }},{{ interface }},{{ protocol }}
+{% endif -%}
+{% endif -%}
+{% endfor -%}
